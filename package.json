@@ -1,0 +1,26 @@
+{
+  "name": "achart-funnel",
+  "version": "1.0.0",
+  "description": "漏洞图",
+  "keywords": [],
+  "homepage": "",
+  "author": "有田 <huangtong.ht@alibaba-inc.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/acharts/achart-funnel.git"
+  },
+  "bugs": {
+    "url": ""
+  },
+  "licenses": "MIT",
+  "spm": {
+    "main": "index.js",
+    "dependencies": {
+      "acharts" : "1.0.10",
+      "achart-legend" : "1.0.1"
+    },
+    "devDependencies": {
+      "expect.js": "0.3.1"
+    }
+  }
+}
