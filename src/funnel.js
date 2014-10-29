@@ -1,8 +1,10 @@
-var AChart = require('acharts'),
-	Util = AChart.Util,
-	Series = AChart.Series,
-	ActivedGroup = AChart.Actived.Group,
+var Util = require('achart-util'),
+	Series = require('achart-series'),
+	ActivedGroup = require('achart-actived').Group,
+	Size = require('achart-series-size'),
 	Legend = require("achart-legend");
+
+
 
 var Funnel = function(cfg){
 		Funnel.superclass.constructor.call(this,cfg);
@@ -10,17 +12,37 @@ var Funnel = function(cfg){
 
 Util.extend(Funnel,Series);
 
-Util.mixin(Funnel,[ActivedGroup,Legend.UseLegend]);
-
 Funnel.ATTRS = {
-	colors : ['#ff6600','#b01111','#ac5724','#572d8a'],
 	xField : 'name',
 	yField : 'value',
 	width : null,
+	labelLine : {
+		'stroke-width' : 1
+	},
 	item : {
 		stroke : '#fff'
+	},
+	legendType : 'rect',
+	/**
+	 * 定点的形状，angle和rect2 种
+	 * @type {String}
+	 */
+	topShape : 'angle',
+
+	/**
+	 * 数据的排序方向，默认是从大到小
+	 * @type {String}
+	 */
+	sort : 'desc',
+	animate : true,
+
+	border : {
+		stroke : '#ddd',
+		'stroke-width' : 1
 	}
 };
+
+Util.mixin(Funnel,[ActivedGroup,Legend.UseLegend,Size]);
 
 Util.augment(Funnel,{
 	renderUI : function(){
@@ -31,18 +53,12 @@ Util.augment(Funnel,{
 	},
 	//设置边框为零
 	_initpplot : function(){
-		
-		var plotRange = this.get('parent').get('plotRange');
-			canvas = this.get('canvas');
-
-			plotRange.bl = {x:0,y:canvas.get('height')-50},
-			plotRange.br = {x:canvas.get('width'),y:canvas.get('height')-50},
-			plotRange.tl = {x:0,y:0},
-			plotRange.tr = {x:canvas.get('width'),y:0};
-
-		this.set('width',canvas.get('width')-80);
-		this.set('height',canvas.get('height')-80);
+		var _self = this,
+			r = _self.getRadius() * 2;
+		this.set('width',r);
+		this.set('height',r);
 	},
+	
 	//存放漏斗图形的分组
 	_initGroup : function(){
 		var _self = this,
@@ -53,22 +69,24 @@ Util.augment(Funnel,{
 	_sortData : function(data){
 		var _self = this; 
 		data.sort(function(obj1,obj2){
-			if (_self.get('Cfg').overturn) {
+			if (_self.get('sort') == 'asc') {
 				return obj1.value - obj2.value;
 			}else{
 				return obj2.value - obj1.value;
 			}
 		});
 	},
+	//转换节点
 	getPointByValue : function(name,value) {
 		return {xValue : name,value : value};
 	},
-	processPoint : function(point,index){
+	//附加节点信息
+	processPoint : function(point,index,total){
 		var _self = this,
-		width = _self.get('canvas').get('width'),
+		width = _self.get('width'),
 		startPoint = _self._getStartPoint(),
 		centerX = (startPoint.x + width/2),
-		avgHeight = _self._getAvgHeight(),
+		avgHeight = _self._getAvgHeight(total),
 		curY = startPoint.y + avgHeight * index,
 		centerY = curY + avgHeight/2;
 
@@ -78,223 +96,303 @@ Util.augment(Funnel,{
 		point.beginY = curY;
 		point.endY = curY + avgHeight;
 	},
+	//绘制节点
 	draw : function(points,callback){
-		var _self = this;
+		var _self = this,
+			animate = _self.get('animate'),
+			shapes = [];
 
 		Util.each(points,function(point,index){
-			_self._drawShape(point,index);
+			var factor = animate ? 0 : 1,
+				shape = _self._drawShape(point,index,factor);
+
+			shapes.push(shape);
 		});
 
-		this.renderLegend();
+		if(animate){
+			Util.animStep(1000,function(factor){
+				Util.each(shapes,function(shape,index){
+					var path = _self._getItemPath(shape.get('point'),index,factor);
+					shape.attr('path' , path);
+				});
+			},function(){
+				after();
+			});
+		}else{
+			after();
+		}
+		if(!_self.get('legendGroup')){
+			_self.renderLegend();
+		}
+		
+		function after(){
+			_self.resetBorder();
+			_self._addLabels(points);
+			callback && callback();
+		}		
+		
+	},
+	//更改数据
+	changeData : function (data,redraw) {
+		this._sortData(data);
+		Funnel.superclass.changeData.call(this,data,redraw);
+	},
+	//图形变化
+	changeShapes : function  (points) {
+		var _self = this,
+			group = _self.get('group'),
+			labelsGroup = _self.get('labelsGroup'),
+			lineGroup = _self.get('lineGroup');
+		group.clear();
+		labelsGroup.clear();
+		lineGroup && lineGroup.clear();
+		_self.draw(points,function  () {
+			_self.resetLegendItems();
+		});
+	},
+	_addLabels : function(points){
+		var _self = this,
+			max = _self._getMaxValue(points);
 
-		callback && callback();
+		Util.each(points,function(point,index){
+			var xValue = point.xValue;
+			_self.addLabel(xValue,point,max);
+		});
+		
 	},
-	_getAvgHeight : function(){
-		return this.get('height')/this.get('data').length;
+	resetBorder : function(){
+		var _self = this,
+			border = _self.get('border'),
+			borderShape = _self.get('borderShape');
+		if(!border){
+			return;
+		}
+		var	path = _self._getBorderPath();
+
+		if(!borderShape){
+			var cfg = Util.mix({},border);
+			cfg.path = path;
+			borderShape = _self.addShape('path',cfg);
+			_self.set('borderShape',borderShape);
+		}else{
+			borderShape.animate({path : path},_self.get('changeDuration'));
+		}
 	},
-	_drawShape : function(point,index){
+	//获取border 的path
+	_getBorderPath : function(){
+		var _self = this,
+			group = _self.get('group'),
+			items = group.get('children'),
+			factor = _self.get('sort') == 'desc' ? 1 : -1,
+			path = [],
+			paths = [],
+			offset = 8,
+			points = [];
+
+		Util.each(items,function(item){
+			if(item.get('visible')){
+				points.push(item.get('point'));
+			}
+		});
+
+		Util.each(items,function(item,i){
+			var path,
+				index,
+				point = item.get('point');
+			if(item.get('visible')){
+				index = Util.indexOf(points,point);
+				path = _self._getItemPath(point,index,1,points);
+			}else{
+				path = paths[paths.length -1] || item.attr('path');
+			}
+			paths.push(path);
+		});
+
+		var len = paths.length,
+			diff = factor * 2,
+			bottomOffset = factor > 0 ? (offset + diff) : 0,
+			first = paths[0],
+			last = paths[len - 1],
+			leftIndex = 0,
+			rightIndex = 1,
+			lastIndex = 3;
+
+		path.push(['M',first[leftIndex][1] - bottomOffset,first[leftIndex][2] - (offset-diff)]);
+				
+		for (var i = 1; i < len; i++) {
+			var item = paths[i];
+			path.push(['L',item[leftIndex][1] - offset,item[leftIndex][2]]);
+		};
+
+		if(factor > 0){
+			path.push(['L',last[lastIndex][1],last[lastIndex][2] + offset]);
+		}else{
+			path.push(['L',last[lastIndex][1] - (offset - diff),last[lastIndex][2] + (offset + diff)]);
+
+			path.push(['L',last[2][1] + (offset - diff),last[2][2] + (offset + diff)]);
+		}
+		
+
+		for (var i = len - 1; i > 0; i--) {
+			var item = paths[i];
+			path.push(['L',item[rightIndex][1] + offset,item[rightIndex][2]]);
+		};
+
+		path.push(['L',first[rightIndex][1] + bottomOffset,first[rightIndex][2] - (offset - diff)]);
+		path.push('z');
+
+		return path;
+
+	},
+	//获取平均高度
+	_getAvgHeight : function(len){
+		len = len || this.get('data').length;
+		return this.get('height')/len;
+	},
+	_drawShape : function(point,index,factor){
 		var _self = this,
 		cfg = _self._getItemCfg(point,index),
 		group = _self.get('group');
 
-		cfg.path = _self._getItemPath(point,index);
+		cfg.path = _self._getItemPath(point,index,factor);
 
 		var shape = group.addShape('path',cfg);
-			shape.set('value',point.value),
-			shape.set('xValue',point.xValue);
-
-		_self._resizeShapeToCenterPoint(shape,0.2);
-
-		shape.animate({
-			path : cfg.path
-		},400,'<');
-
 		shape.set('point',point);
 
-		if(_self.get('labels')){
-			var xValue = point.xValue,
-				max = _self._getMaxValue();
-			_self.addLabel(xValue,point,max);
-		}
+		return shape;
 	},
 	addLabel : function (value,point,max){
 	    var _self = this,
 	        labelsGroup = _self.get('labelsGroup'),
 	        label = {},
-			width = _self.get('width'),
+					width = _self.get('width'),
 	        labelCfg = _self.get('labels'),
 	        xOffset = 0,
+	        lOffset = labelCfg.offset || 20,
 	        rst;
 
 	    if (labelCfg.position == 'right') {
-	    	xOffset = (point.value/max) * width/2 + 20;
+	    	xOffset = (point.value/max) * width/2 + lOffset;
 	    }else if (labelCfg.position == 'left') {
-	    	xOffset = -((point.value/max) * width/2 + 20);
+	    	xOffset = -((point.value/max) * width/2 + lOffset);
 	    }; 
 
-
 	    if(labelsGroup){
+	    	//label = labelCfg.label || {};
 	    	label.text = value;
-			label.x = point.x + xOffset;
-			label.y = point.y;
-			label.point = point;
-			rst = labelsGroup.addLabel(label);
+				label.x = point.x + xOffset;
+				label.y = point.y;
+				label.point = point;
+				if(!label.fill){
+					label.fill = point.color;
+				}
+				rst = labelsGroup.addLabel(label);
 	    }
 
+	    xOffset && _self.lineToLabel(point,rst);
 	    return rst;
-    }, 
-	_resizePath : function(path,m){
-		if(path){
-			arrPath = Util.parsePathString(path);
-		    for (var i = 0; i < arrPath.length; i++) {
-		    	for (var j = 1; j < arrPath[i].length; j++) {
-		    		arrPath[i][j] = arrPath[i][j]*m;
-		    	};
-		    };
-		    path = Util.parsePathArray(arrPath);	
-		    return path;
-		}else{
-			return "";
-		}
-	},
-	//以Shap中心点为参考点缩放
-	_resizeShapeToCenterPoint : function(shape,m){
-		var _self = this,
-			bbox = shape.getBBox(),
-			path = Util.parsePathArray(shape.attr('path')),
-			point = {
-				x : bbox.cx,
-				y : bbox.cy
-			};
-		if(path){
-			arrPath = Util.parsePathString(path);
-		    for (var i = 0; i < arrPath.length; i++) {
-		    	for (var j = 1; j < arrPath[i].length; j++) {
-		    		if (j%2 == 0) {
-		    			arrPath[i][j] = point.y - (point.y - arrPath[i][j])*m;
-		    		}else{
-		    			arrPath[i][j] = point.x - (point.x - arrPath[i][j])*m;
-		    		}
-		    	};
-		    };
-		    shape.attr('path',Util.parsePathArray(arrPath));	
-		}else{
-			return null;
-		}
-	},
+  }, 
+	
 	//省略逻辑直接设置20,20,否则需要根据plotRange计算
 	_getStartPoint : function(){
-		return {x : 0,y:0};
+		var _self = this,
+			center = _self.getCenter(),
+			width = _self.get('width');
+
+		return {
+			x : center.x - width/2,
+			y : center.y - width/2
+		};
 	},
 	//获取最大的值
-	_getMaxValue : function(){
-		var data = this.get('data'),
-			max = this.get('data')[0].value;
-		for (var i = 1; i < data.length; i++) {
-			if (data[i].value > max) {
-				max = data[i].value;    			
+	_getMaxValue : function(points){
+		points =  points || this.getPoints();
+
+		var	max =points[0].value;
+		for (var i = 1; i < points.length; i++) {
+			if (points[i].value > max) {
+				max = points[i].value;    			
 			};
 		};
 		return max;
 	},
 	//获取最大的值
-	_getMinValue : function(){
-		var data = this.get('data'),
-			min = this.get('data')[0].value;
-		for (var i = 1; i < data.length; i++) {
-			if (data[i].value < min) {
-				min = data[i].value;    			
+	_getMinValue : function(points){
+		points =  points || this.getPoints();
+		var min = points.value;
+		for (var i = 1; i < points.length; i++) {
+			if (points[i].value < min) {
+				min = points[i].value;    			
 			};
 		};
 		return min;
 	},
 	//获取节点的path
-	_getItemPath : function(point,index){
+	_getItemPath : function(point,index,factor,points){
+
+		if(factor == null){
+			factor = 1;
+		}
 		var _self = this,
-		max = _self._getMaxValue(),
-		min = _self._getMinValue(),
-		width = _self.get('width'),
-		points = _self.getPoints();
-		if (_self.get('Cfg').topShape == "angle") {
+			max = _self._getMaxValue(points),
+			min = _self._getMinValue(points),
+			width = _self.get('width'),
+			topShape = _self.get('topShape'),
+			startY = _self._getStartPoint().y,
+			points = points || _self.getPoints(),
+			lastValue,
+			nextValue;
+
+		if (topShape == "angle") {
 			topValue = 0;
-		}else if (_self.get('Cfg').topShape == "rect") {
+		}else if (topShape == "rect") {
 			topValue = min;
 		}
 
-		if (_self.get('Cfg').overturn) {
+		var curPercent, //当前占的比例
+			slibPercent; //临近的占得比例
+
+		if (_self.get('sort') == 'asc') {
 			lastValue = points[index - 1] ? points[index - 1].value : topValue;
-			var tl = point.x - (lastValue/max) * width/2,
-				tr = point.x + (lastValue/max) * width/2,
-				bl = point.x - (point.value/max) * width/2,
-				br = point.x + (point.value/max) * width/2;
-			return [['M',tl,point.beginY],['L',tr,point.beginY],['L',br,point.endY],['L',bl,point.endY],['z']];
+			curPercent = lastValue/max;
+			slibPercent = point.value/max;
 		}else{
 			nextValue = points[index + 1] ? points[index + 1].value : topValue;
-			var tl = point.x - (point.value/max) * width/2,
-				tr = point.x + (point.value/max) * width/2,
-				bl = point.x - (nextValue/max) * width/2,
-				br = point.x + (nextValue/max) * width/2;
-			return [['M',tl,point.beginY],['L',tr,point.beginY],['L',br,point.endY],['L',bl,point.endY],['z']];
+			curPercent = point.value/max;
+			slibPercent = nextValue/max;
 		}
+		var tl = point.x - curPercent * width/2 * factor,
+				tr = point.x + curPercent * width/2 * factor,
+				bl = point.x - slibPercent * width/2 * factor,
+				br = point.x + slibPercent * width/2 * factor,
+				beginY = startY + (point.beginY - startY) * factor,
+				endY = startY + (point.endY - startY) * factor;
+
+		return [['M',tl,beginY],['L',tr,beginY],['L',br,endY],['L',bl,endY],['z']];
 	},
     //覆写 getLengendItems 方法
-    getLengendItems : function(){
-	  var types = 'circle',
-		  symbols = 'circle';
+  getLengendItems : function(){
+	  
       var _self = this,
 	      group = _self.get('group'),
 	      items = [];
 	      children = group.get('children');
-        
+
       Util.each(children,function(child,i){
-		color = child.get('attrs').fill;
-		var item = {
-		name : 'test ' + i,
-		color : color,
-		type : types,
-		symbol : symbols, 
-		item : child
-		};
-		items.push(item);
+				var color = child.get('attrs').fill,
+					point = child.get('point');
+
+				var item = {
+					name : point.name,
+					color : color,
+					type : _self.get('legendType'),
+					item : child
+				};
+				items.push(item);
       });
 
       return items;
-    },
-	//覆写Lengend鼠标事件
-	_bindLegendEvent : function(){
-		var _self = this,
-		  legendGroup = _self.get('legendGroup');
-
-		//over
-		legendGroup.on('itemover',function(ev){
-		  var legendItem = ev.item,
-		    item = _self.getByLendItem(legendItem);
-		  if(_self.setActivedItem){
-		    _self.setActivedItem(item);
-		  }
-		});
-
-		//out
-		legendGroup.on('itemout',function(ev){
-		  var legendItem = ev.item,
-		    item = _self.getByLendItem(legendItem);
-		  if(_self.clearActivedItem){
-		    _self.clearActivedItem(item);
-		  }
-		});
-
-		legendGroup.on('itemchecked',function(ev){
-		  var legendItem = ev.item,
-		    item = _self.getByLendItem(legendItem);
-		  _self.showChild(item);
-		});
-
-		legendGroup.on('itemunchecked',function(ev){
-		  var legendItem = ev.item,
-		    item = _self.getByLendItem(legendItem);
-		  _self.hideChild(item);
-		});
-	},
+  },
 	showChild : function(item){
 		if (item) {
 			item.show();
@@ -305,100 +403,59 @@ Util.augment(Funnel,{
 		if (item) {
 			item.hide();
 			this._resetPath();
+			setTimeout(function  () {
+				var index = item.index(),
+					pre = item.get('parent').getChildAt(index -1);
+				if(pre){
+					var prePath = pre.attr('path'),
+						path = [];
+					path.push(['M',prePath[3][1],prePath[3][2]]);
+					path.push(['L',prePath[2][1],prePath[2][2]]);
+					path.push(['L',prePath[2][1],prePath[2][2]]);
+					path.push(['L',prePath[3][1],prePath[3][2]]);
+					path.push(['z']);
+					item.attr('path',path);
+				}
+			},500)
+			
 		}
 	},
 	_resetPath : function(){
 		var _self = this,
-			paths = _self.get('group').get('children'),
+			shapes = _self.get('group').get('children'),
 			visiblePaths = [],
-			varlueArr = [],
-			labelsGroup = _self.get('labelsGroup');
+			points = [],
+			labelsGroup = _self.get('labelsGroup'),
+			borderShape = _self.get('borderShape'),
+			lineGroup = _self.get('lineGroup');
 
-		Util.each(paths,function(path,index){
-			if (path.get('visible')) {
-				visiblePaths.push(path);
-				varlueArr.push(path.get('value'));
-			}else{
-				_self._resizeShapeToCenterPoint(path,0.2);
+		lineGroup && lineGroup.clear();
+		//borderShape && borderShape.hide();
+		Util.each(shapes,function(shape,index){
+			if (shape.get('visible')) {
+				visiblePaths.push(shape);
+				points.push(shape.get('point'));
 			}
-		})
-
-		var num = visiblePaths.length;
-			max = varlueArr[0],
-		    min = varlueArr[0];
-
-		for (var i = 0; i < varlueArr.length; i++) {
-			if(varlueArr[i] > max){
-				max = varlueArr[i];
-			}
-		};
-
-		for (var i = 0; i < varlueArr.length; i++) {
-			if(varlueArr[i] < min){
-				min = varlueArr[i];
-			}
-		};
-
+		});
 		
 		labelsGroup.clear();
 
 		Util.each(visiblePaths,function(visiblePath,index){
-		    height = _self.get('height'),
-		    widthCanvas = _self.get('canvas').get('width'),
-		    width = _self.get('width'),
-		    avgHeight = height/num,
-		    startPoint = _self._getStartPoint(),
-		    centerX = (startPoint.x + widthCanvas/2),
-		    curY = startPoint.y + avgHeight * index,
-		    centerY = curY + avgHeight/2;
+			var point = visiblePath.get('point');
+			_self.processPoint(point,index,visiblePaths.length);
+			var path = _self._getItemPath(point,index,1,points);
+			visiblePath.animate({path : path},_self.get('changeDuration'));
+		});
 
-		    point = {
-		    	x : centerX,
-		    	y : centerY,
-		    	beginY : curY,
-		    	endY : curY + avgHeight,
-		    	value : visiblePath.get('value'),
-		    	xValue : visiblePath.get('xValue')
-		    }
-
-			if(_self.get('labels')){
-				_self.addLabel(point.xValue,point,max);
-			}
-
-			var path = _self._getPath(point,max,min,index,visiblePaths);
-			visiblePath.animate({
-				path : path
-			},400)
-		})
-
+		_self.resetBorder();
+		setTimeout(function(){
+			//borderShape.show();
+			
+			_self._addLabels(points);
+		},500);
 
 	},
-	_getPath : function(point,max,min,index,visiblePaths){
-		var _self = this,
-		    width = _self.get('width');
-
-			if (_self.get('Cfg').topShape == "angle") {
-				topValue = 0;
-			}else if (_self.get('Cfg').topShape == "rect") {
-				topValue = min;
-			}
-
-			if (_self.get('Cfg').overturn) {
-				lastValue = visiblePaths[index - 1] ? visiblePaths[index - 1].get('value') : topValue;
-				var tl = point.x - (lastValue/max) * width/2,
-					tr = point.x + (lastValue/max) * width/2,
-					bl = point.x - (point.value/max) * width/2,
-					br = point.x + (point.value/max) * width/2;
-				return [['M',tl,point.beginY],['L',tr,point.beginY],['L',br,point.endY],['L',bl,point.endY],['z']];
-			}else{
-				nextValue = visiblePaths[index + 1] ? visiblePaths[index + 1].get('value') : topValue;
-				var tl = point.x - (point.value/max) * width/2,
-					tr = point.x + (point.value/max) * width/2,
-					bl = point.x - (nextValue/max) * width/2,
-					br = point.x + (nextValue/max) * width/2;
-				return [['M',tl,point.beginY],['L',tr,point.beginY],['L',br,point.endY],['L',bl,point.endY],['z']];
-			}
-	},
+	
 	_getItemCfg : function(point,index){
 		var _self = this,
 		colors = _self.get('colors'),
@@ -409,6 +466,33 @@ Util.augment(Funnel,{
 		rst.fill = colors[index%colors.length];
 		point.color = rst.fill;
 		return rst;
+	},
+	lineToLabel : function(point,label){
+		var _self = this,
+			lineGroup = _self.get('lineGroup'),
+			labelLine = _self.get('labelLine'),
+			cfg;
+		if(labelLine && label){
+			if(!lineGroup){
+				lineGroup = _self.addGroup();
+				_self.set('lineGroup',lineGroup);
+			}
+			cfg = Util.isObject(labelLine) ? labelLine : {'stroke-width' : 1};
+			cfg = Util.mix({},cfg);
+			var bbx = label.getBBox();
+			cfg.path = Util.substitute('M{x1} {y1} L {x2} {y2}',{
+				x1 : point.x,
+				y1 : point.y,
+				x2 : bbx.x,
+				y2 : bbx.y + bbx.height/2
+			});
+			if(!cfg.stroke){
+				cfg.stroke = point.color;
+			}
+
+			lineGroup.addShape('path',cfg);
+
+		}
 	},
 	getActiveItems : function(){
 		return this.get('group').get('children');
