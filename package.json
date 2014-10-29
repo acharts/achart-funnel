@@ -1,10 +1,14 @@
 {
   "name": "achart-funnel",
   "version": "1.0.0",
-  "description": "漏洞图",
+  "description": "漏斗图",
   "keywords": [],
   "homepage": "",
+<<<<<<< HEAD
   "author": "有田 dxq613@gmail.com",
+=======
+  "author": "有田 <418466938@qq.com>",
+>>>>>>> 0c4d73a062b19cad14f255d28a9bae7d78182bd4
   "repository": {
     "type": "git",
     "url": "https://github.com/acharts/achart-funnel.git"
