@@ -1,6 +1,6 @@
 {
   "name": "achart-funnel",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "漏斗图",
   "keywords": [],
   "homepage": "",
@@ -16,15 +16,14 @@
   "spm": {
     "main": "index.js",
     "dependencies": {
-      "achart-util" : "1.0.0",
-      "achart-series" : "1.0.0",
-      "achart-series-size" : "1.0.0",
-      "achart-actived" : "1.0.0",
-      "achart-legend" : "1.0.1"
+      "achart-util" : "~1.0.0",
+      "achart-series" : "~1.0.0",
+      "achart-series-size" : "~1.0.0",
+      "achart-actived" : "~1.0.0",
+      "achart-legend" : "~1.0.1"
     },
     "devDependencies": {
-      "expect.js": "0.3.1",
-      "acharts" : "1.0.12"
+      "expect.js": "0.3.1"
     }
   }
 }

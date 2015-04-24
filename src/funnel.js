@@ -429,6 +429,7 @@ Util.augment(Funnel,{
 			borderShape = _self.get('borderShape'),
 			lineGroup = _self.get('lineGroup');
 
+
 		lineGroup && lineGroup.clear();
 		//borderShape && borderShape.hide();
 		Util.each(shapes,function(shape,index){
@@ -448,12 +449,16 @@ Util.augment(Funnel,{
 		});
 
 		_self.resetBorder();
-		setTimeout(function(){
+		var timeout = _self.get('timeout');
+		if(timeout){
+			clearTimeout(timeout);
+		}
+		timeout = setTimeout(function(){
 			//borderShape.show();
-			
 			_self._addLabels(points);
+			_self.set('timeout',null)
 		},500);
-
+		_self.set('timeout',timeout);
 	},
 	
 	_getItemCfg : function(point,index){

@@ -6,10 +6,11 @@
 ````html
 
 <div id="c1"></div>
+<script src="http://g.tbcdn.cn/bui/acharts/1.0.23/acharts-min.js"></script>
 ````
 
 ````javascript
-seajs.use(['acharts','index'], function(AChart,Funnel) {
+seajs.use(['index'], function(Funnel) {
 
 	Series = AChart.Series;
 	Series.Funnel = Funnel;
@@ -22,18 +23,13 @@ seajs.use(['acharts','index'], function(AChart,Funnel) {
 			margin : 50
 		},
 		tooltip : {
-			title : {
-				'font-size' : '16px',
-				y : 10,
-				x : 5,
-				fill : '#ff7c26'
-			}
 		},
 		legend : null,
 		series : [
 			{   
 				name : '流量分析',
 				type : 'funnel',
+				animate: false,
 				colors : ['#00a3d7','#6ebb46','#f6c100','#ff6a00','#e32400','#423ba8'],
 				labels : {
 					position : 'right',//middle,left,right
@@ -72,7 +68,7 @@ seajs.use(['acharts','index'], function(AChart,Funnel) {
 ````
 
 ````javascript
-seajs.use(['acharts','index'], function(AChart,Funnel) {
+seajs.use(['index'], function(Funnel) {
 
 	Series = AChart.Series;
 	Series.Funnel = Funnel;
@@ -85,18 +81,13 @@ seajs.use(['acharts','index'], function(AChart,Funnel) {
 			margin : 50
 		},
 		tooltip : {
-			title : {
-				'font-size' : '16px',
-				y : 10,
-				x : 5,
-				fill : '#ff7c26'
-			}
 		},
 		legend : null,
 		series : [
 			{   
 				name : '流量分析',
 				type : 'funnel',
+				animate: false,
 				colors : ['#00a3d7','#6ebb46','#f6c100','#ff6a00','#e32400','#423ba8'],
 				labels : {
 					position : 'right',//middle,left,right
@@ -124,17 +115,6 @@ seajs.use(['acharts','index'], function(AChart,Funnel) {
 	});
 
 	chart.render();
-
-	var data = [
-		          {value:20, name:'订单'},
-		          {value:60, name:'点击'},
-		          {value:80, name:'点击'},
-		          {value:100, name:'展现'}
-	];
-
-	setTimeout(function(){
-		chart.changeData(data);
-	},1200);
 
 });
 ````
